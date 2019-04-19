@@ -1,0 +1,233 @@
+(* This is the preamble where you can have arbitrary sml code. For us
+it is empty *)
+
+%%
+
+%eop EOF
+%verbose
+%pure
+%name Expr
+
+%term EOF | MULTICOMMENT of string | SINGLECOMMENT of string
+    (* keywords *)
+    | BREAK | CASE  |   CHAR    | CONST | CONTINUE  | DEFAULT   | DO
+    | DOUBLE    | ELSE  | FLOAT | FOR   | IF    | INT   | LONG  | REGISTER  
+    | RETURN    | SHORT | SIGNED    | SIZEOF    | STATIC    | STRUCT    
+    | SWITCH    | TYPEDEF   | UNSIGNED  | VOID  | WHILE | NULL | PRINTF
+    (* directives *)
+    | INCLUDE of string   | INCLUDEH of string  | DEFINE    
+    (* values and identifier *)
+    | INTVAL of int   | FLOATVAL of real | CHARVAL of char | ID of string
+    (* seperators *)
+    | LPAREN    | RPAREN    | SEMICOLON | COMMA | LBRACE  | RBRACE    | LBRACKET  
+    | RBRACKET  | QMARK | COLON | DOT   
+    (* operators *)
+    | PLUS  | MINUS | MUL   | DIV 
+    | MODULUS   | INC   | DEC 
+    (* comparisions *)
+    | NE    | EQ    | GT    | GTE   | LT    | LTE 
+    (* logical *)
+    | AND   | OR    | NOT 
+    (* bitwise *)
+    | BITAND    | BITOR     | XOR   | COMPLEMENT | LEFTSHIFT | RIGHTSHIFT
+    (* assignment *)
+    | ASSIGN    | PLUSA     | MINUSA    | TIMESA    | DIVA  | MODULUSA 
+    | LEFTSHIFTA    | RIGHTSHIFTA   | BITORA    | BITANDA   | XORA
+    (* string *)
+    | STRING  of string 
+    (* dummy tokens *)
+    | HIGHER      | LOWER 
+
+%nonterm  PROGRAM of Ast.ProgItem list 
+       | DIRECTIVES of Ast.Directives 
+       | PROG_ITEMS of Ast.ProgItem list 
+       | PROG_ITEM of Ast.ProgItem 
+       | PRIM of Ast.Prim 
+       | DECSTMTS of Ast.DecStmt 
+       | DECSTMT of Ast.Dec list 
+       | DECS of Ast.Dec 
+       | ID_VALUES of Ast.IdValues 
+       | EXP_OP of Ast.ExpOp
+       | BINOP of Ast.Binop 
+       | COMPARE of Ast.Compare 
+       | BITWISE of Ast.Bitwise 
+       | LOGICAL of Ast.Logical 
+       | ASSIGNMENT of Ast.Assignment 
+       | INCDEC of Ast.IncDec 
+       | UNOP of Ast.Unop 
+       | EXP of Ast.Exp 
+       | PARAMS of Ast.Params list 
+       | FUNC of Ast.ProgItem
+       | ARGUMENTS of Ast.Exp list 
+       | FUNC_CALL of Ast.FuncCall  
+       | BLOCK of Ast.Statement list 
+       | STATEMENTS of Ast.Statement list 
+       | STATEMENT of Ast.Statement
+       | RETURNSTMT of Ast.ReturnStmt 
+       | COMMENTSTMT of Ast.CommentStmt
+
+%noshift EOF
+
+%nonassoc LOWER
+%nonassoc ELSE
+%nonassoc VOID INT CHAR FLOAT DOUBLE LONG 
+%nonassoc ID 
+
+%left COMMA 
+%right LEFTSHIFTA RIGHTSHIFTA
+%right XORA BITORA  
+%right MODULUSA BITANDA 
+%right TIMESA DIVA 
+%right PLUSA MINUSA
+%right ASSIGN
+%right QMARK
+%left OR 
+%left AND
+%left BITOR
+%left XOR
+%left BITAND 
+%left NE EQ
+%left GT GTE LT LTE 
+%left LEFTSHIFT RIGHTSHIFT
+%left PLUS MINUS  (* + and - are of same precedence *)
+%left MUL DIV MODULUS       (* higher than + and -            *)
+%nonassoc NOT COMPLEMENT
+%nonassoc INC DEC 
+%nonassoc LPAREN
+
+%nonassoc HIGHER
+
+(* The type that captures position in the input *)
+%pos int
+
+%%
+PROGRAM : PROG_ITEMS                    (PROG_ITEMS)
+
+PROG_ITEMS : (* empty *)                ([])
+            | PROG_ITEM PROG_ITEMS      (PROG_ITEM :: PROG_ITEMS)
+
+PROG_ITEM :   DIRECTIVES            (Ast.ProgItemDirectives DIRECTIVES)
+            | DECSTMTS              (Ast.DecStmtsCons DECSTMTS)
+            | FUNC                  (FUNC)
+            | COMMENTSTMT           (Ast.ProgItemComments COMMENTSTMT)
+
+
+DIRECTIVES :  INCLUDE               (Ast.Include INCLUDE)
+            | INCLUDEH              (Ast.Includeh INCLUDEH)
+            | DEFINE ID ID_VALUES   (Ast.Define (Ast.Id ID, ID_VALUES))
+
+(* TODO : more primary types to be added *)
+PRIM :  INT                         (Ast.INT)
+      | VOID                        (Ast.VOID)
+      | CHAR                        (Ast.CHAR)
+      | FLOAT                       (Ast.FLOAT)
+      | DOUBLE                      (Ast.DOUBLE)
+      | LONG                        (Ast.LONG)
+
+DECSTMTS :  PRIM DECSTMT SEMICOLON  (Ast.DecStmtCons (PRIM, DECSTMT))
+        
+DECSTMT :  DECS                      (DECS :: [])
+         | DECS COMMA DECSTMT        (DECS :: DECSTMT)
+
+DECS :  ID                    (Ast.Variable (Ast.Id ID))
+      | ID ASSIGN EXP         (Ast.DecVar (Ast.Id ID, EXP))
+
+
+ID_VALUES :  ID               (Ast.IdValuesVar (Ast.Id ID))
+           | INTVAL           (Ast.IntVal INTVAL)
+           | FLOATVAL         (Ast.FloatVal FLOATVAL)
+           | CHARVAL          (Ast.CharVal CHARVAL)
+           | STRING           (Ast.StringVal STRING)
+
+EXP_OP :  EXP BINOP EXP       %prec LOWER (Ast.BinaryOp (EXP1, BINOP, EXP2))
+        | ID INCDEC           (Ast.IdIncDec (Ast.Id ID, INCDEC))
+        | INCDEC ID           (Ast.IncDecId (Ast.Id ID, INCDEC))
+        | UNOP EXP            %prec HIGHER (Ast.UnaryOp (UNOP, EXP))
+
+BINOP :   PLUS                (Ast.PLUS)
+        | MINUS               (Ast.MINUS)
+        | MUL                 (Ast.MUL)
+        | DIV                 (Ast.DIV)
+        | MODULUS             (Ast.MODULUS)
+        | COMPARE             (Ast.BinopCompare COMPARE)
+        | BITWISE             (Ast.BinopBitwise BITWISE)
+        | LOGICAL             (Ast.BinopLogical LOGICAL)
+
+COMPARE :  NE                 (Ast.NE)
+      | EQ                    (Ast.EQ)
+      | GT                    (Ast.GT)
+      | GTE                   (Ast.GTE)
+      | LT                    (Ast.LT)
+      | LTE                   (Ast.LTE)
+
+BITWISE :  BITAND             (Ast.BITAND)
+         | BITOR              (Ast.BITOR)
+         | XOR                (Ast.XOR)
+         | LEFTSHIFT          (Ast.LEFTSHIFT)
+         | RIGHTSHIFT         (Ast.RIGHTSHIFT)
+
+LOGICAL :   AND               (Ast.AND)
+          | OR                (Ast.OR)
+
+ASSIGNMENT :  ASSIGN          (Ast.ASSIGN)
+            | PLUSA           (Ast.PLUSA)
+            | MINUSA          (Ast.MINUSA)
+            | TIMESA          (Ast.TIMESA)
+            | DIVA            (Ast.DIVA)
+            | MODULUSA        (Ast.MODULUSA)
+            | LEFTSHIFTA      (Ast.LEFTSHIFTA)
+            | RIGHTSHIFTA     (Ast.RIGHTSHIFTA)
+            | BITORA          (Ast.BITORA)
+            | BITANDA         (Ast.BITANDA)
+            | XORA            (Ast.XORA)
+
+
+INCDEC :  INC                 (Ast.INC)
+        | DEC                 (Ast.DEC)
+
+UNOP :  NOT                   (Ast.NOT)
+      | COMPLEMENT            (Ast.COMPLEMENT)
+
+EXP :  ID_VALUES                    (Ast.IdValuesCons ID_VALUES)
+     | EXP_OP                       (Ast.ExpOpCons EXP_OP)
+     | ID ASSIGNMENT EXP            (Ast.AssignCons (Ast.Id ID, ASSIGNMENT, EXP))
+     | EXP QMARK EXP COLON EXP      %prec LOWER (Ast.TernaryOp (EXP1, EXP2, EXP3))
+     | LPAREN EXP RPAREN            (Ast.Paren (EXP))
+     | FUNC_CALL                    (Ast.ExpFuncCall FUNC_CALL)
+
+PARAMS :  (* empty *)                      ( [] )
+         | PRIM DECS                       (Ast.ParamsCons (PRIM, DECS) :: [])
+         | PRIM DECS COMMA PARAMS          (Ast.ParamsCons (PRIM, DECS) :: PARAMS)
+
+
+FUNC :  PRIM ID LPAREN PARAMS RPAREN BLOCK    %prec HIGHER  (Ast.FuncCons (PRIM, Ast.Id ID, PARAMS, Ast.Block BLOCK)) 
+
+ARGUMENTS : (* empty *)                   ([])
+           | EXP                          (EXP :: [])
+           | EXP COMMA ARGUMENTS          (EXP :: ARGUMENTS)
+
+FUNC_CALL : ID LPAREN ARGUMENTS RPAREN     (Ast.FuncCallCons (Ast.Id ID, ARGUMENTS))
+
+BLOCK : LBRACE STATEMENTS RBRACE          (STATEMENTS)
+
+STATEMENTS : (* empty *)                  ([])
+            | STATEMENT STATEMENTS        (STATEMENT :: STATEMENTS)
+            | COMMENTSTMT STATEMENTS      (Ast.StmtCommentCons COMMENTSTMT :: STATEMENTS)
+
+
+STATEMENT :  IF EXP STATEMENT                %prec LOWER   (Ast.IF (EXP, STATEMENT))
+           | IF EXP STATEMENT ELSE STATEMENT    (Ast.IFELSE (EXP, STATEMENT1, STATEMENT2))
+           | DECSTMTS                           (Ast.StmtDecStmts DECSTMTS)
+           | RETURNSTMT                         (Ast.ReturnStmtCons RETURNSTMT)
+           | BREAK SEMICOLON                    (Ast.BREAK) 
+           | CONTINUE SEMICOLON                 (Ast.CONTINUE)
+           | BLOCK                              (Ast.Block BLOCK)
+           | WHILE EXP STATEMENT                (Ast.While (EXP, STATEMENT))
+           | EXP SEMICOLON                      (Ast.ExpCons EXP)
+
+RETURNSTMT :  RETURN SEMICOLON            (Ast.RETURN)
+            | RETURN EXP SEMICOLON        (Ast.ReturnCons EXP)
+
+COMMENTSTMT :  SINGLECOMMENT              (Ast.SingleComment SINGLECOMMENT)
+             | MULTICOMMENT               (Ast.MultiComment MULTICOMMENT)
+
